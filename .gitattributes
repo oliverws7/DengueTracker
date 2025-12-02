@@ -1,0 +1,2 @@
+# Ignorar arquivos HTML nas estatísticas de linguagem
+*.html linguist-vendored
