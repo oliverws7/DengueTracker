@@ -71,11 +71,3 @@ GET,/api/cases,Listar todos os casos registrados
 POST,/api/cases,Reportar um novo caso suspeito
 GET,/api/outbreaks,Listar focos do mosquito
 
-👨‍💻 Autor
-<div align="center">
-
-<a href="https://www.google.com/search?q=https://github.com/oliverws7"> <img style="border-radius: 50%;" src="https://www.google.com/search?q=https://avatars.githubusercontent.com/oliverws7" width="100px;" alt=""/> <br /> <sub><b>Oliver Nunes</b></sub> </a>
-
-Feito com ❤️ por Oliver Nunes. Entre em contato!
-
-</div>
