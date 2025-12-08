@@ -14,7 +14,7 @@
   <a href="#-funcionalidades">Funcionalidades</a> •
   <a href="#-tecnologias">Tecnologias</a> •
   <a href="#-instalação-e-execução">Instalação</a> •
-  <a href="#-autor">Autor</a>
+ 
 </p>
 
 </div>
