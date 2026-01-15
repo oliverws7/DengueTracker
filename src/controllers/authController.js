@@ -1,5 +1,8 @@
 const User = require('../models/User');
 const { gerarToken } = require('../config/jwt');
+// Mantenho essas importações pois podem ser usadas em outro lugar
+const { generateToken } = require('../middleware/auth');
+const { hashPassword, comparePassword } = require('../utils/bcrypt');
 
 const authController = {
     // Registrar novo usuário
@@ -26,7 +29,7 @@ const authController = {
             
             await novoUsuario.save();
             
-            // Gerar token
+            // Gerar token - uso o gerarToken original
             const token = gerarToken(novoUsuario._id, novoUsuario.role);
             
             res.status(201).json({
@@ -222,4 +225,11 @@ const authController = {
     }
 };
 
+// MANTENHO as funções em inglês também para compatibilidade
+// Isso garante que outras partes do sistema que usam essas funções continuem funcionando
+exports.register = authController.registrar;
+exports.login = authController.login;
+exports.getProfile = authController.perfil;
+
+// Exporto o controller completo também
 module.exports = authController;
