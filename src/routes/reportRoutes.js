@@ -1,307 +1,215 @@
 const express = require('express');
-const reportController = require('../controllers/reportController');
-const { authenticateToken, authorizeRoles, optionalAuth } = require('../middleware/auth');
-const { validate, schemas, validateQuery, validateParams } = require('../middleware/validators');
-const { reportLimiter } = require('../middleware/rateLimit');
-
 const router = express.Router();
+const Report = require('../models/Report');
 
-// ======================
-// ROTAS PÚBLICAS (somente leitura)
-// ======================
+/**
+ * @route GET /api/reports/public
+ * @desc Obter relatórios públicos (sem autenticação)
+ * @access Public
+ */
+router.get('/', async (req, res) => {
+  try {
+    // Parâmetros de paginação
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
 
-// Listar reportes públicos (com filtros)
-router.get('/publicos',
-    optionalAuth, // Autenticação opcional para personalização
-    validateQuery(schemas.query.filtrosReporte),
-    validateQuery(schemas.query.pagination),
-    async (req, res) => {
-        try {
-            const Report = require('../models/Report');
-            const { pagina = 1, limite = 10, status, tipoCriadouro, cidade, bairro } = req.query;
-            
-            const filtro = { 
-                status: { $in: ['confirmado', 'eliminado'] } // Apenas reportes verificados publicamente
-            };
-            
-            // Aplicar filtros adicionais
-            if (status) filtro.status = status;
-            if (tipoCriadouro) filtro.tipoCriadouro = tipoCriadouro;
-            if (cidade) filtro.cidade = cidade;
-            if (bairro) filtro.bairro = bairro;
-            
-            const reportes = await Report.find(filtro)
-                .populate('usuario', 'nome nivel avatar')
-                .sort({ createdAt: -1 })
-                .skip((pagina - 1) * limite)
-                .limit(parseInt(limite));
-                
-            const total = await Report.countDocuments(filtro);
-            
-            res.json({
-                success: true,
-                reportes,
-                paginacao: {
-                    pagina: parseInt(pagina),
-                    limite: parseInt(limite),
-                    total,
-                    totalPaginas: Math.ceil(total / limite)
-                },
-                filtros: req.query
-            });
-        } catch (error) {
-            console.error('Erro ao listar reportes públicos:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Erro ao listar reportes públicos'
-            });
+    // Filtros básicos (apenas dados públicos)
+    const filter = {
+      status: 'confirmado', // Apenas relatórios confirmados
+      isPublic: true
+    };
+
+    // Filtros opcionais
+    if (req.query.tipo) filter.tipo = req.query.tipo;
+    if (req.query.bairro) filter.localizacao = { $regex: req.query.bairro, $options: 'i' };
+    
+    // Data mínima (últimos 30 dias por padrão)
+    const days = parseInt(req.query.days) || 30;
+    filter.createdAt = {
+      $gte: new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+    };
+
+    // Buscar relatórios
+    const reports = await Report.find(filter)
+      .select('-__v -internalNotes -updatedBy -isPublic') // Excluir campos sensíveis
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    // Contar total
+    const total = await Report.countDocuments(filter);
+
+    res.json({
+      success: true,
+      count: reports.length,
+      total,
+      pagination: {
+        page,
+        limit,
+        pages: Math.ceil(total / limit),
+        hasNext: page * limit < total,
+        hasPrev: page > 1
+      },
+      data: reports.map(report => ({
+        ...report,
+        // Garantir que dados sensíveis não sejam expostos
+        reportadoPor: report.reportadoPor ? {
+          _id: report.reportadoPor._id,
+          nome: report.reportadoPor.nome
+        } : undefined
+      }))
+    });
+  } catch (error) {
+    console.error('Erro em public reports:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao buscar relatórios públicos',
+      message: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+/**
+ * @route GET /api/reports/public/stats
+ * @desc Estatísticas públicas de dengue
+ * @access Public
+ */
+router.get('/stats', async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 30;
+    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    // Agregação para estatísticas
+    const stats = await Report.aggregate([
+      {
+        $match: {
+          status: 'confirmado',
+          isPublic: true,
+          createdAt: { $gte: startDate }
         }
-    }
-);
-
-// Mapa de calor (dados agregados para mapa)
-router.get('/mapa-calor',
-    async (req, res) => {
-        try {
-            const Report = require('../models/Report');
-            const { cidade, dias = 30 } = req.query;
-            
-            const dataLimite = new Date();
-            dataLimite.setDate(dataLimite.getDate() - parseInt(dias));
-            
-            const filtro = { 
-                createdAt: { $gte: dataLimite },
-                status: 'confirmado'
-            };
-            if (cidade) filtro.cidade = cidade;
-            
-            const pontos = await Report.find(filtro)
-                .select('localizacao.lat localizacao.lng tipoCriadouro nivelRisco createdAt')
-                .limit(1000); // Limitar para performance
-                
-            res.json({
-                success: true,
-                pontos: pontos.map(p => ({
-                    lat: p.localizacao.lat,
-                    lng: p.localizacao.lng,
-                    tipo: p.tipoCriadouro,
-                    risco: p.nivelRisco,
-                    data: p.createdAt
-                })),
-                total: pontos.length,
-                periodoDias: dias
-            });
-        } catch (error) {
-            console.error('Erro ao gerar mapa de calor:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Erro ao gerar mapa de calor'
-            });
+      },
+      {
+        $group: {
+          _id: {
+            tipo: '$tipo',
+            status: '$status'
+          },
+          count: { $sum: 1 },
+          ultimo: { $max: '$createdAt' }
         }
-    }
-);
-
-// ======================
-// ROTAS PROTEGIDAS (usuários autenticados)
-// ======================
-
-// Criar reporte
-router.post('/criar',
-    authenticateToken,
-    reportLimiter, // Rate limiting para criação de reportes
-    validate(schemas.report.criarReporte),
-    reportController.criarReporte
-);
-
-// Criar reporte (alias em inglês)
-router.post('/create',
-    authenticateToken,
-    reportLimiter,
-    validate(schemas.report.create),
-    reportController.criarReporte
-);
-
-// Meus reportes
-router.get('/meus',
-    authenticateToken,
-    validateQuery(schemas.query.pagination),
-    reportController.listarMeusReportes
-);
-
-// Detalhes de um reporte específico
-router.get('/:id',
-    authenticateToken,
-    validateParams({ id: schemas.idSchema }), // Valida se ID é válido
-    async (req, res) => {
-        try {
-            const Report = require('../models/Report');
-            const reporte = await Report.findById(req.params.id)
-                .populate('usuario', 'nome nivel avatar')
-                .populate('agenteResponsavel', 'nome role');
-                
-            if (!reporte) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Reporte não encontrado'
-                });
-            }
-            
-            // Verificar permissões: usuário pode ver seu próprio reporte, admin pode ver todos
-            if (req.user.role !== 'admin' && reporte.usuario._id.toString() !== req.user.id) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'Acesso negado. Você só pode visualizar seus próprios reportes.'
-                });
-            }
-            
-            res.json({
-                success: true,
-                reporte
-            });
-        } catch (error) {
-            console.error('Erro ao buscar reporte:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Erro ao buscar reporte'
-            });
+      },
+      {
+        $group: {
+          _id: '$_id.tipo',
+          total: { $sum: '$count' },
+          ultimoRelatorio: { $max: '$ultimo' }
         }
-    }
-);
+      },
+      {
+        $sort: { total: -1 }
+      }
+    ]);
 
-// ======================
-// ROTAS ADMIN/AGENTE
-// ======================
+    // Contagem total
+    const totalReports = await Report.countDocuments({
+      status: 'confirmado',
+      isPublic: true,
+      createdAt: { $gte: startDate }
+    });
 
-// Listar todos reportes (admin/agente)
-router.get('/',
-    authenticateToken,
-    authorizeRoles('admin', 'agente'),
-    validateQuery(schemas.query.filtrosReporte),
-    validateQuery(schemas.query.pagination),
-    reportController.listarReportes
-);
-
-// Atualizar status (admin/agente)
-router.put('/status',
-    authenticateToken,
-    authorizeRoles('admin', 'agente'),
-    validate(schemas.report.atualizarStatus),
-    reportController.atualizarStatus
-);
-
-// Atualizar reporte completo (admin/agente)
-router.put('/:id',
-    authenticateToken,
-    authorizeRoles('admin', 'agente'),
-    validateParams({ id: schemas.idSchema }),
-    async (req, res) => {
-        try {
-            const Report = require('../models/Report');
-            const { observacoesAgente, nivelRisco, agenteResponsavel } = req.body;
-            
-            const atualizacao = {};
-            if (observacoesAgente !== undefined) atualizacao.observacoesAgente = observacoesAgente;
-            if (nivelRisco !== undefined) atualizacao.nivelRisco = nivelRisco;
-            if (agenteResponsavel !== undefined) atualizacao.agenteResponsavel = agenteResponsavel;
-            
-            const reporte = await Report.findByIdAndUpdate(
-                req.params.id,
-                atualizacao,
-                { new: true, runValidators: true }
-            ).populate('usuario agenteResponsavel', 'nome email role');
-            
-            if (!reporte) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Reporte não encontrado'
-                });
-            }
-            
-            res.json({
-                success: true,
-                message: 'Reporte atualizado com sucesso',
-                reporte
-            });
-        } catch (error) {
-            console.error('Erro ao atualizar reporte:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Erro ao atualizar reporte'
-            });
+    // Contagem por bairro (top 10)
+    const bairros = await Report.aggregate([
+      {
+        $match: {
+          status: 'confirmado',
+          isPublic: true,
+          createdAt: { $gte: startDate },
+          'localizacao.bairro': { $exists: true, $ne: '' }
         }
-    }
-);
-
-// Estatísticas (admin/agente)
-router.get('/estatisticas/avancadas',
-    authenticateToken,
-    authorizeRoles('admin', 'agente'),
-    async (req, res) => {
-        try {
-            const Report = require('../models/Report');
-            
-            const [porTipo, porStatus, porCidade, porMes] = await Promise.all([
-                Report.getPorTipoCriadouro(),
-                Report.aggregate([
-                    { $group: { _id: '$status', total: { $sum: 1 } } }
-                ]),
-                Report.aggregate([
-                    { $group: { _id: '$cidade', total: { $sum: 1 } } },
-                    { $sort: { total: -1 } },
-                    { $limit: 10 }
-                ]),
-                Report.aggregate([
-                    {
-                        $group: {
-                            _id: { $dateToString: { format: "%Y-%m", date: "$createdAt" } },
-                            total: { $sum: 1 }
-                        }
-                    },
-                    { $sort: { _id: 1 } },
-                    { $limit: 12 }
-                ])
-            ]);
-            
-            res.json({
-                success: true,
-                estatisticas: {
-                    porTipoCriadouro: porTipo,
-                    porStatus: porStatus,
-                    topCidades: porCidade,
-                    evolucaoMensal: porMes
-                }
-            });
-        } catch (error) {
-            console.error('Erro ao buscar estatísticas avançadas:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Erro ao buscar estatísticas'
-            });
+      },
+      {
+        $group: {
+          _id: '$localizacao.bairro',
+          count: { $sum: 1 }
         }
-    }
-);
+      },
+      {
+        $sort: { count: -1 }
+      },
+      {
+        $limit: 10
+      }
+    ]);
 
-// ======================
-// HEALTH CHECK
-// ======================
+    res.json({
+      success: true,
+      data: {
+        periodo: {
+          inicio: startDate,
+          dias: days
+        },
+        totalRelatorios: totalReports,
+        porTipo: stats,
+        bairrosMaisAfetados: bairros,
+        atualizacao: new Date()
+      }
+    });
+  } catch (error) {
+    console.error('Erro em stats públicos:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao gerar estatísticas públicas'
+    });
+  }
+});
 
-router.get('/health',
-    (req, res) => {
-        res.json({
-            success: true,
-            service: 'Reports API',
-            status: 'operational',
-            timestamp: new Date().toISOString(),
-            endpoints: {
-                publicos: 'GET /api/reports/publicos',
-                mapaCalor: 'GET /api/reports/mapa-calor',
-                criar: 'POST /api/reports/criar (autenticado)',
-                meus: 'GET /api/reports/meus (autenticado)',
-                todos: 'GET /api/reports (admin/agente)',
-                atualizarStatus: 'PUT /api/reports/status (admin/agente)'
-            }
-        });
-    }
-);
+/**
+ * @route GET /api/reports/public/map
+ * @desc Dados para mapa de calor (geolocalização)
+ * @access Public
+ */
+router.get('/map', async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 30;
+    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const mapData = await Report.find({
+      status: 'confirmado',
+      isPublic: true,
+      createdAt: { $gte: startDate },
+      'localizacao.coordenadas': { $exists: true }
+    })
+    .select('localizacao.coordenadas tipo createdAt')
+    .limit(500) // Limitar para performance
+    .lean();
+
+    res.json({
+      success: true,
+      count: mapData.length,
+      data: mapData.map(item => ({
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: item.localizacao.coordenadas
+        },
+        properties: {
+          tipo: item.tipo,
+          data: item.createdAt
+        }
+      })),
+      metadata: {
+        periodo: days + ' dias',
+        atualizacao: new Date()
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao gerar dados do mapa'
+    });
+  }
+});
 
 module.exports = router;
