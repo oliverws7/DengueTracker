@@ -1,12 +1,10 @@
 const rateLimit = require('express-rate-limit');
+const { ipKeyGenerator } = require('express-rate-limit');
 
 // Helper para IP seguro (resolve problema IPv6)
 const getClientIP = (req) => {
-  // Tenta pegar IP real mesmo atrás de proxy
-  return req.ip || 
-         req.connection.remoteAddress || 
-         req.socket.remoteAddress ||
-         req.connection.socket.remoteAddress;
+  // Usa o ipKeyGenerator para lidar corretamente com IPv6
+  return ipKeyGenerator(req, req.res);
 };
 
 // Rate limiting geral para todas as rotas
@@ -23,15 +21,15 @@ exports.generalLimiter = rateLimit({
   keyGenerator: (req) => {
     // Para usuários autenticados, usar userId + IP para mais precisão
     if (req.user && req.user.userId) {
-      return `user:${req.user.userId}:${getClientIP(req)}`;
+      return `user:${req.user.userId}:${ipKeyGenerator(req, req.res)}`;
     }
-    return getClientIP(req);
+    return ipKeyGenerator(req, req.res);
   },
   skip: (req) => {
     // Pular rate limiting para localhost em desenvolvimento
     if (process.env.NODE_ENV === 'development') {
-      const ip = getClientIP(req);
-      return ip === '::1' || ip === '127.0.0.1' || ip === '::ffff:127.0.0.1';
+      const ip = ipKeyGenerator(req, req.res);
+      return ip === '::1' || ip === '127.0.0.1';
     }
     return false;
   }
@@ -53,9 +51,9 @@ exports.authLimiter = rateLimit({
     // Rate limit por email para prevenir ataques de força bruta
     const email = req.body?.email;
     if (email) {
-      return `auth:${email}:${getClientIP(req)}`;
+      return `auth:${email}:${ipKeyGenerator(req, req.res)}`;
     }
-    return getClientIP(req);
+    return ipKeyGenerator(req, req.res);
   }
 });
 
@@ -76,7 +74,7 @@ exports.reportLimiter = rateLimit({
       return `user:${req.user.userId}:reports`;
     }
     // Para não autenticados, limitar por IP
-    return `ip:${getClientIP(req)}:reports`;
+    return `ip:${ipKeyGenerator(req, req.res)}:reports`;
   }
 });
 
@@ -91,7 +89,7 @@ exports.apiLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: getClientIP
+  keyGenerator: ipKeyGenerator
 });
 
 // Rate limiting específico para WebSocket/auth (se necessário no futuro)
@@ -103,7 +101,7 @@ exports.wsConnectionLimiter = rateLimit({
     error: 'Muitas conexões WebSocket. Tente novamente mais tarde.',
     code: 'WS_CONNECTION_LIMIT'
   },
-  keyGenerator: getClientIP
+  keyGenerator: ipKeyGenerator
 });
 
 // Rate limiting para uploads de arquivos
@@ -119,6 +117,6 @@ exports.uploadLimiter = rateLimit({
     if (req.user && req.user.userId) {
       return `user:${req.user.userId}:uploads`;
     }
-    return getClientIP(req);
+    return ipKeyGenerator(req, req.res);
   }
 });

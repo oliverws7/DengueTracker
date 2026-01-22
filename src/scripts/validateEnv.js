@@ -6,32 +6,22 @@ const requiredEnvVars = [
 ];
 
 function validateEnv() {
-  console.log('🔍 Validando variáveis de ambiente...');
+  console.log('🔍 Verificando integridade do ambiente...');
   
   const missing = requiredEnvVars.filter(varName => !process.env[varName]);
   
   if (missing.length > 0) {
-    console.error('❌ Variáveis de ambiente ausentes:', missing);
-    console.error('💡 Configure seu arquivo .env com base em .env.example');
+    console.error('❌ ERRO: Variáveis obrigatórias ausentes no .env:', missing);
     process.exit(1);
   }
-  
-  if (process.env.JWT_SECRET === 'sua_chave_secreta_aqui' || 
-      process.env.JWT_SECRET.includes('exemplo')) {
-    console.warn('⚠️  JWT_SECRET está com valor padrão! Altere para produção.');
-  }
-  
-  if (process.env.NODE_ENV === 'production' && 
-      process.env.MONGODB_URI.includes('localhost')) {
-    console.warn('⚠️  Usando MongoDB local em produção! Configure MongoDB Atlas.');
-  }
-  
-  console.log('✅ Variáveis de ambiente validadas com sucesso!');
-  return true;
-}
 
-if (require.main === module) {
-  validateEnv();
+  // Verifica se a string do Atlas está no formato correto
+  if (!process.env.MONGODB_URI.startsWith('mongodb+srv://')) {
+    console.warn('⚠️ Alerta: MONGODB_URI não parece ser uma conexão Atlas (Srv).');
+  }
+
+  console.log('✅ Ambiente validado.');
+  return true;
 }
 
 module.exports = validateEnv;
