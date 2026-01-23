@@ -9,8 +9,7 @@ const helmet = require("helmet");
 const cron = require("node-cron");
 const morgan = require("morgan");
 const compression = require("compression");
-const { errors } = require("express-validator");
-const rateLimit = require("express-rate-limit");
+const rateLimit = require("express-rate-limit"); // ✅ ADICIONADO AQUI
 const mongoSanitize = require("express-mongo-sanitize");
 const xss = require("xss-clean");
 const hpp = require("hpp");
@@ -48,18 +47,22 @@ const corsOptions = {
       "http://localhost:5173", 
       "http://localhost:5000",
       "http://127.0.0.1:3000",
-      "http://127.0.0.1:5173"
+      "http://127.0.0.1:5173",
+      "http://localhost:8080"
     ];
     
-    // Em desenvolvimento, permitir todos os origins
-    if (process.env.NODE_ENV === 'development' && !origin) {
-      return callback(null, true);
-    }
-    
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
+    // Em desenvolvimento, permitir mais flexibilidade
+    if (process.env.NODE_ENV === 'development') {
+      if (!origin || allowedOrigins.includes(origin) || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        return callback(null, true);
+      }
     } else {
-      callback(new Error(`Origin ${origin} não permitido por CORS`));
+      // Em produção, apenas origens permitidas
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`Origin ${origin} não permitido por CORS`));
+      }
     }
   },
   credentials: true,
@@ -80,7 +83,7 @@ app.use('/api/auth', securityHeaders);
 // 3. Compressão de resposta (exceto para SSE/WebSocket)
 app.use(compression({
   filter: (req, res) => {
-    if (req.headers['x-no-compression'] || req.path.includes('/socket.io/')) {
+    if (req.headers['x-no-compression'] || req.path.includes('/socket.io/') || req.path.includes('/uploads/')) {
       return false;
     }
     return compression.filter(req, res);
@@ -88,7 +91,7 @@ app.use(compression({
   threshold: 1024
 }));
 
-// 4. Helmet com configuração específica para produção/desenvolvimento
+// 4. Helmet com configuração específica
 const helmetConfig = process.env.NODE_ENV === 'production' ? {
   contentSecurityPolicy: {
     directives: {
@@ -96,15 +99,18 @@ const helmetConfig = process.env.NODE_ENV === 'production' ? {
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       scriptSrc: ["'self'", "'unsafe-inline'"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      imgSrc: ["'self'", "data:", "https:", "http:"],
-      connectSrc: ["'self'", "ws:", "wss:"]
+      imgSrc: ["'self'", "data:", "https:", "http:", "blob:"],
+      connectSrc: ["'self'", "ws:", "wss:", "http://localhost:5000"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'self'"]
     }
   },
   crossOriginEmbedderPolicy: false,
   crossOriginResourcePolicy: { policy: "cross-origin" }
 } : {
   contentSecurityPolicy: false,
-  crossOriginEmbedderPolicy: false
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: false
 };
 
 app.use(helmet(helmetConfig));
@@ -146,7 +152,8 @@ app.use(hpp({
   whitelist: [
     'page', 'limit', 'sort', 'fields', 
     'latitude', 'longitude', 'radius',
-    'status', 'type', 'priority'
+    'status', 'type', 'priority', 'tipo',
+    'nivelRisco', 'cidade', 'bairro'
   ]
 }));
 
@@ -154,8 +161,10 @@ app.use(hpp({
 app.use(setUser);
 
 // ======================
-// RATE LIMITING CONFIGURADO (VERSÃO SIMPLIFICADA - SEM ERRO IPv6)
+// RATE LIMITING SIMPLIFICADO (SEM ERROS) - ✅ ATUALIZADO
 // ======================
+
+// Use rate limiting padrão sem configurações complexas
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
   max: 100,
@@ -204,13 +213,27 @@ const apiLimiter = rateLimit({
   legacyHeaders: false
 });
 
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: {
+    success: false,
+    error: 'Limite de uploads excedido',
+    code: 'RATE_LIMIT_EXCEEDED'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
 // ======================
 // BACKUP AUTOMÁTICO & MANUTENÇÃO
 // ======================
-cron.schedule('0 3 * * *', () => {
-  console.log('📅 [SISTEMA] Iniciando rotina de backup diário...');
-  if (typeof realizarBackup === 'function') realizarBackup();
-});
+if (process.env.NODE_ENV === 'production') {
+  cron.schedule('0 3 * * *', () => {
+    console.log('📅 [SISTEMA] Iniciando rotina de backup diário...');
+    if (typeof realizarBackup === 'function') realizarBackup();
+  });
+}
 
 // Limpeza de tokens revogados a cada hora
 cron.schedule('0 * * * *', () => {
@@ -352,6 +375,16 @@ io.on("connection", (socket) => {
     }
   });
   
+  socket.on("upload-imagem", (dados) => {
+    // Notificar sobre novo upload de imagem
+    socket.to("sala-global").emit("nova-imagem-relatorio", {
+      reportId: dados.reportId,
+      imagemUrl: dados.imagemUrl,
+      uploadedBy: socket.userData.name,
+      timestamp: new Date().toISOString()
+    });
+  });
+  
   socket.on("disconnect", (reason) => {
     console.log(`🔌 Socket desconectado: ${socket.id} (Razão: ${reason})`);
     
@@ -374,7 +407,8 @@ io.on("connection", (socket) => {
   // Heartbeat para manter conexão ativa
   socket.on("heartbeat", () => {
     socket.emit("heartbeat-response", {
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      online: usuariosOnline.size
     });
   });
 });
@@ -462,10 +496,12 @@ app.use((req, res, next) => {
 // ======================
 const loadRoute = (routePath, fallbackMessage = "Rota em desenvolvimento") => {
   try {
-    return require(routePath);
+    const route = require(routePath);
+    console.log(`✅ Rota carregada: ${routePath}`);
+    return route;
   } catch (error) {
     if (error.code === 'MODULE_NOT_FOUND') {
-      console.warn(`⚠️  Rota não encontrada: ${routePath}`);
+      console.warn(`⚠️  Rota não encontrada: ${routePath} - Usando fallback`);
       
       // Criar rota placeholder
       const express = require('express');
@@ -477,12 +513,14 @@ const loadRoute = (routePath, fallbackMessage = "Rota em desenvolvimento") => {
           message: fallbackMessage,
           path: req.path,
           method: req.method,
-          status: 'in_development'
+          status: 'in_development',
+          timestamp: new Date().toISOString()
         });
       });
       
       return router;
     }
+    console.error(`❌ Erro ao carregar rota ${routePath}:`, error.message);
     throw error;
   }
 };
@@ -493,42 +531,71 @@ const loadRoute = (routePath, fallbackMessage = "Rota em desenvolvimento") => {
 
 // Rotas públicas (sem autenticação obrigatória)
 app.use("/api/auth", authLimiter, loadRoute("./routes/authRoutes", "Sistema de autenticação"));
+
+// Rotas públicas com estatísticas
 app.use("/api/public/stats", loadRoute("./routes/publicStatsRoutes", "Estatísticas públicas"));
 
-// Rota de relatórios públicos (implementação inline)
-app.get("/api/reports/public", optionalAuth, (req, res) => {
-  res.json({
-    success: true,
-    message: 'Relatórios públicos - Em desenvolvimento',
-    endpoints: {
-      stats: '/api/reports/public/stats',
-      map: '/api/reports/public/map'
-    }
-  });
+// Rota de relatórios públicos (implementação inline com paginação)
+app.get("/api/reports/public", optionalAuth, async (req, res) => {
+  try {
+    const Report = require('./models/Report');
+    const { page = 1, limit = 10, cidade, bairro, tipo } = req.query;
+    
+    const query = { 
+      status: 'confirmado',
+      isPublic: true 
+    };
+    
+    if (cidade) query.cidade = new RegExp(cidade, 'i');
+    if (bairro) query.bairro = new RegExp(bairro, 'i');
+    if (tipo) query.tipoCriadouro = tipo;
+    
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    const [reports, total] = await Promise.all([
+      Report.find(query)
+        .select('-observacoesAgente -agenteResponsavel -motivoEliminacao')
+        .populate('usuario', 'nome email')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      Report.countDocuments(query)
+    ]);
+    
+    res.json({
+      success: true,
+      data: reports,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / limit),
+        hasNext: skip + reports.length < total,
+        hasPrev: page > 1
+      }
+    });
+  } catch (error) {
+    console.error('Erro em relatórios públicos:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao buscar relatórios públicos'
+    });
+  }
 });
 
-app.get("/api/reports/public/stats", (req, res) => {
-  res.json({
-    success: true,
-    data: {
-      totalReports: 0,
-      lastWeek: 0
-    }
-  });
-});
-
-// Rotas protegidas com autenticação JWT (com fallback)
+// Rotas protegidas com autenticação JWT
 app.use("/api/users", authenticateToken, generalLimiter, loadRoute("./routes/userRoutes", "Gerenciamento de usuários"));
 app.use("/api/reports", authenticateToken, reportLimiter, loadRoute("./routes/reportRoutes", "Gerenciamento de relatórios"));
 app.use("/api/gamification", authenticateToken, generalLimiter, loadRoute("./routes/gamificationRoutes", "Sistema de gamificação"));
 
-// Rotas administrativas (com fallback)
+// Rotas administrativas
 app.use("/api/admin", authenticateToken, authorizeRoles('admin', 'superadmin'), loadRoute("./routes/adminRoutes", "Painel administrativo"));
 
-// Upload de imagens (com fallback)
-app.use("/api/upload", authenticateToken, loadRoute("./routes/uploadRoutes", "Upload de imagens"));
+// Upload de imagens com rate limiting específico
+app.use("/api/upload", authenticateToken, uploadLimiter, loadRoute("./routes/uploadRoutes", "Upload de imagens"));
 
-// API Keys para integrações de terceiros (com fallback)
+// API Keys para integrações de terceiros
 app.use("/api/v1/external", validateApiKey, apiLimiter, loadRoute("./routes/externalRoutes", "API para integrações externas"));
 
 // Health check detalhado
@@ -546,7 +613,7 @@ app.get("/health", (req, res) => {
       readyState: mongoose.connection.readyState,
       host: mongoose.connection.host,
       name: mongoose.connection.name,
-      models: Object.keys(mongoose.connection.models)
+      models: Object.keys(mongoose.connection.models).length
     },
     
     // Status da aplicação
@@ -559,7 +626,8 @@ app.get("/health", (req, res) => {
       },
       nodeVersion: process.version,
       platform: process.platform,
-      pid: process.pid
+      pid: process.pid,
+      cpuUsage: process.cpuUsage()
     },
     
     // Status do WebSocket
@@ -588,16 +656,12 @@ app.get("/health", (req, res) => {
         "/api/admin",
         "/api/upload",
         "/api/v1/external",
+        "/api/public/stats",
+        "/api/reports/public",
         "/health",
-        "/"
-      ].filter(route => {
-        try {
-          // Verifica se a rota está configurada
-          return true;
-        } catch {
-          return false;
-        }
-      })
+        "/",
+        "/api/docs"
+      ]
     }
   };
 
@@ -616,13 +680,30 @@ app.get("/", (req, res) => {
     health: "/health",
     environment: process.env.NODE_ENV || "development",
     endpoints: {
-      auth: "/api/auth",
-      users: "/api/users",
-      reports: "/api/reports",
-      gamification: "/api/gamification",
-      admin: "/api/admin",
-      upload: "/api/upload",
-      external: "/api/v1/external",
+      auth: {
+        login: "POST /api/auth/login",
+        register: "POST /api/auth/register",
+        refresh: "POST /api/auth/refresh",
+        logout: "POST /api/auth/logout"
+      },
+      users: {
+        profile: "GET /api/users/profile",
+        update: "PUT /api/users/profile",
+        list: "GET /api/users"
+      },
+      reports: {
+        create: "POST /api/reports",
+        list: "GET /api/reports",
+        get: "GET /api/reports/:id",
+        update: "PUT /api/reports/:id",
+        delete: "DELETE /api/reports/:id",
+        public: "GET /api/reports/public"
+      },
+      gamification: "GET /api/gamification",
+      upload: {
+        single: "POST /api/upload/image",
+        multiple: "POST /api/upload/images"
+      },
       public: {
         stats: "/api/public/stats",
         reports: "/api/reports/public"
@@ -634,7 +715,8 @@ app.get("/", (req, res) => {
     },
     quickStart: {
       auth: "POST /api/auth/login com {email, password}",
-      createReport: "POST /api/reports com token Authorization: Bearer <token>"
+      createReport: "POST /api/reports com token Authorization: Bearer <token>",
+      uploadImage: "POST /api/upload/image com form-data"
     }
   });
 });
@@ -647,56 +729,59 @@ app.get("/api/docs", (req, res) => {
     lastUpdated: new Date().toISOString(),
     baseUrl: `${req.protocol}://${req.get('host')}`,
     authentication: {
-      jwt: "Bearer token no header Authorization",
-      apiKey: "X-API-Key header para integrações"
+      jwt: {
+        description: "Bearer token no header Authorization",
+        example: "Authorization: Bearer <seu_token_jwt>"
+      },
+      apiKey: {
+        description: "X-API-Key header para integrações",
+        example: "X-API-Key: <sua_chave_api>"
+      }
     },
     rateLimiting: {
       general: "100 requests per 15 minutes",
       auth: "20 requests per 15 minutes", 
       reports: "50 requests per 15 minutes",
+      upload: "30 requests per 15 minutes",
       apiKeys: "1000 requests per hour"
     },
-    endpoints: {
-      auth: {
-        login: "POST /api/auth/login",
-        register: "POST /api/auth/register",
-        refresh: "POST /api/auth/refresh",
-        logout: "POST /api/auth/logout"
-      },
-      reports: {
-        create: "POST /api/reports",
-        list: "GET /api/reports",
-        get: "GET /api/reports/:id",
-        update: "PUT /api/reports/:id",
-        delete: "DELETE /api/reports/:id",
-        public: "GET /api/reports/public"
-      },
-      users: {
-        profile: "GET /api/users/profile",
-        update: "PUT /api/users/profile",
-        list: "GET /api/users"
-      },
-      upload: {
-        image: "POST /api/upload/image"
-      }
+    endpoints: require('./docs/endpoints.json') || {
+      message: "Documentação completa em desenvolvimento"
     }
   });
 });
 
 // Servir arquivos estáticos (uploads) com segurança
+const uploadsPath = path.join(__dirname, "uploads");
 app.use("/uploads", 
   (req, res, next) => {
     // Proteger acesso a arquivos de upload
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // 24 horas
     next();
   },
-  express.static(path.join(__dirname, "uploads"), {
+  express.static(uploadsPath, {
     dotfiles: 'ignore',
     index: false,
-    maxAge: '1d'
+    maxAge: '1d',
+    setHeaders: (res, filePath) => {
+      // Validar que é uma imagem
+      const ext = path.extname(filePath).toLowerCase();
+      const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+      
+      if (!allowedExtensions.includes(ext)) {
+        res.status(403).end();
+      }
+    }
   })
 );
+
+// Servir documentação OpenAPI se existir
+if (process.env.NODE_ENV !== 'production') {
+  const docsPath = path.join(__dirname, "docs");
+  app.use("/api-docs", express.static(docsPath));
+}
 
 // ======================
 // MANIPULAÇÃO DE ERROS (ATUALIZADA)
@@ -725,14 +810,13 @@ app.use((req, res) => {
       "/api/auth/register",
       "/api/reports",
       "/api/users/profile",
-      "/api/reports/public"
+      "/api/reports/public",
+      "/api/upload/image"
     ],
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    requestId: Date.now().toString(36) + Math.random().toString(36).substr(2)
   });
 });
-
-// Manipulador de erros do express-validator
-//app.use(errors());// Comentado para usar manipulador global personalizado 
 
 // Manipulador de erros global
 app.use((err, req, res, next) => {
@@ -744,7 +828,8 @@ app.use((err, req, res, next) => {
     method: req.method,
     ip: req.ip,
     userId: req.userId || 'anonymous',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    requestId: req.id || Date.now().toString(36)
   };
 
   console.error("🔥 Error:", errorLog);
@@ -755,7 +840,8 @@ app.use((err, req, res, next) => {
     success: false,
     error: "Internal Server Error",
     code: "INTERNAL_SERVER_ERROR",
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    requestId: errorLog.requestId
   };
 
   if (err.name === 'ValidationError') {
@@ -891,25 +977,36 @@ server.listen(PORT, "0.0.0.0", () => {
   📁 Ambiente: ${process.env.NODE_ENV || 'development'}
   🗄️  Database: ${mongoose.connection.host || 'localhost'}
   🔒 Segurança: Helmet, CORS, RateLimit, Sanitization
-  💾 Backup: Agendado para as 03:00 AM
-  📈 WebSocket: ${io ? 'Ativo' : 'Inativo'}
+  💾 Backup: ${process.env.NODE_ENV === 'production' ? 'Ativo (03:00 AM)' : 'Desativado em dev'}
+  📈 WebSocket: Ativo
+  📷 Upload: Sistema de imagens ativo
   🧹 Maintenance: Auto-cleanup ativo
   ======================================================
   `);
   
   // Exibir rotas disponíveis
   console.log('\n📋 Rotas principais:');
-  console.log('  /              - Documentação inicial');
-  console.log('  /health        - Health check completo');
-  console.log('  /api/docs      - Documentação da API');
-  console.log('  /api/auth/*    - Autenticação');
-  console.log('  /api/reports/* - Relatórios de dengue');
-  console.log('  /api/users/*   - Gerenciamento de usuários');
-  console.log('  /api/gamification/* - Sistema de gamificação');
-  console.log('  /api/admin/*   - Painel administrativo (admin only)');
-  console.log('  /api/upload/*  - Upload de imagens');
-  console.log('  /api/v1/external/* - API para integrações');
+  console.log('  /                     - Documentação inicial');
+  console.log('  /health               - Health check completo');
+  console.log('  /api/docs             - Documentação da API');
+  console.log('  /api/auth/*           - Autenticação');
+  console.log('  /api/reports/*        - Relatórios de dengue');
+  console.log('  /api/users/*          - Gerenciamento de usuários');
+  console.log('  /api/gamification/*   - Sistema de gamificação');
+  console.log('  /api/admin/*          - Painel administrativo (admin only)');
+  console.log('  /api/upload/*         - Upload de imagens');
+  console.log('  /api/public/stats     - Estatísticas públicas');
+  console.log('  /api/reports/public   - Relatórios públicos');
+  console.log('  /uploads/*            - Imagens enviadas');
+  console.log('  /api/v1/external/*    - API para integrações');
   console.log('======================================================\n');
+  
+  // Exibir informações importantes
+  console.log('💡 Dicas rápidas:');
+  console.log('  • Uploads: POST /api/upload/image (multipart/form-data)');
+  console.log(`  • Teste rápido: curl http://localhost:${PORT}/health`);
+  console.log('  • Relatórios públicos: /api/reports/public?page=1&limit=10');
+  console.log('  • Documentação completa: /api/docs');
 });
 
 module.exports = { app, io, server, mongoose };

@@ -1,73 +1,119 @@
-<div align="center">
+# 🦟 DengueTracker Ecosystem
 
-# 🦟 DengueTracker Backend
-
-**Sistema Inteligente de Monitoramento e Combate à Dengue**
-
-![NodeJS](https://img.shields.io/badge/Node.js-43853D?style=for-the-badge&logo=node.js&logoColor=white)
-![Express.js](https://img.shields.io/badge/Express.js-404D59?style=for-the-badge)
-![MongoDB](https://img.shields.io/badge/MongoDB-4EA94B?style=for-the-badge&logo=mongodb&logoColor=white)
-![JWT](https://img.shields.io/badge/JWT-black?style=for-the-badge&logo=JSON%20web%20tokens)
-
-<p align="center">
-  <a href="#-sobre-o-projeto">Sobre</a> •
-  <a href="#-funcionalidades">Funcionalidades</a> •
-  <a href="#-tecnologias">Tecnologias</a> •
-  <a href="#-instalação-e-execução">Instalação</a> •
- 
-</p>
-
-</div>
+O **DengueTracker** é uma plataforma full-stack de monitoramento e combate à dengue. O projeto utiliza mecanismos de **gamificação** para incentivar a população a reportar focos do mosquito *Aedes aegypti*, integrando dados em tempo real para ações de saúde pública.
 
 ---
 
-## 📖 Sobre o Projeto
+## 🏗️ Arquitetura do Sistema
 
-O **DengueTracker Backend** é uma solução robusta desenvolvida para auxiliar no combate à dengue através de tecnologia de monitoramento inteligente. 
+O projeto é dividido em duas frentes principais:
 
-Este sistema fornece as APIs necessárias para o gerenciamento de dados epidemiológicos, permitindo que autoridades e cidadãos tenham um controle mais efetivo sobre focos da doença e casos reportados. O objetivo é utilizar dados para prevenir surtos e salvar vidas.
+* **Backend:** API REST robusta construída em Node.js, utilizando MongoDB para persistência de dados georreferenciados e autenticação JWT.
+* **Frontend:** Interface reativa para visualização de estatísticas e gestão de reportes (localizada no diretório `/frontend`).
 
-## 🚀 Funcionalidades
+### Estrutura de Pastas
 
-O sistema foi projetado para oferecer um controle completo:
+```text
+.
+├── backend/
+│   ├── src/              # Core da aplicação (Controllers, Models, Routes)
+│   ├── migrations/       # Gestão de versionamento do banco de dados (MongoDB)
+│   ├── tests/            # Testes automatizados (Unitários e Integração)
+│   └── .env.example      # Template de variáveis de ambiente
+├── frontend/             # Código fonte da interface do usuário
+└── README.md
 
-* **📍 Gerenciamento de Focos:** Registro e mapeamento de locais com focos de reprodução do mosquito.
-* **🩺 Controle de Casos:** Monitoramento de casos suspeitos e confirmados da doença.
-* **📢 Alertas Epidemiológicos:** Sistema de emissão de alertas baseados em dados críticos.
-* **🔐 Autenticação Segura:** Controle de acesso utilizando JSON Web Tokens (JWT).
+```
 
-## 🛠 Tecnologias
+---
 
-As seguintes ferramentas foram utilizadas na construção deste projeto:
+## 🛠️ Tecnologias Utilizadas
 
-* **[Node.js](https://nodejs.org/en/)** - Ambiente de execução Javascript server-side.
-* **[Express](https://expressjs.com/)** - Framework web rápido e minimalista.
-* **[MongoDB](https://www.mongodb.com/)** - Banco de dados NoSQL orientado a documentos.
-* **[JWT](https://jwt.io/)** - Padrão para autenticação segura.
+### **Backend**
 
-## 📦 Instalação e Execução
+* **Runtime:** Node.js
+* **Banco de Dados:** MongoDB (com `migrate-mongo` para controle de schema)
+* **Segurança:** JWT (JSON Web Tokens) e Criptografia de senhas
+* **Documentação:** Swagger (disponível em `/api/docs`)
 
-Para rodar o backend localmente, siga os passos abaixo no seu terminal:
+### **Frontend**
 
+* **Em desenvolvimento**
+
+---
+
+## 🚦 Começando
+
+### Pré-requisitos
+
+* Node.js (v16 ou superior)
+* MongoDB rodando localmente ou via Docker
+* Gerenciador de pacotes (NPM ou Yarn)
+
+### Instalação e Configuração
+
+1. **Clonagem do Repositório:**
 ```bash
-# 1. Clone o repositório
-git clone [https://github.com/oliverws7/DengueTracker.git](https://github.com/oliverws7/DengueTracker.git)
+git clone https://github.com/oliverws7/DengueTracker.git
+cd DengueTracker
 
-# 2. Acesse a pasta do backend
-cd dengue-tracker-backend
+```
 
-# 3. Instale as dependências
+
+2. **Configuração do Backend:**
+```bash
+cd backend
 npm install
+cp .env.example .env
 
-# 4. Configure as variáveis de ambiente (Crie um arquivo .env baseado no exemplo, se houver)
-# Exemplo: CP .env.example .env
+```
 
-# 5. Inicie o servidor em modo de desenvolvimento
+
+*Edite o arquivo `.env` com suas credenciais do MongoDB e porta desejada.*
+3. **Migrações do Banco:**
+```bash
+npm run migrate  # Se configurado via migrate-mongo
+
+```
+
+
+4. **Execução:**
+```bash
 npm run dev
 
-Método,Ponto final,Descrição
-POST,/api/auth/login,Autenticação de usuário
-GET,/api/cases,Listar todos os casos registrados
-POST,/api/cases,Reportar um novo caso suspeito
-GET,/api/outbreaks,Listar focos do mosquito
+```
 
+
+
+---
+
+## 🔌 API Reference (v2.1)
+
+Principais endpoints disponíveis:
+
+| Método | Endpoint | Descrição | Autenticação |
+| --- | --- | --- | --- |
+| `POST` | `/api/auth/login` | Autentica usuário e retorna token | Não |
+| `POST` | `/api/reports` | Cria um novo reporte de foco | Sim (Bearer) |
+| `GET` | `/api/gamification` | Retorna ranking e pontuação | Sim (Bearer) |
+| `GET` | `/api/public/stats` | Estatísticas públicas para o dashboard | Não |
+
+---
+
+## 🧪 Testes
+
+A qualidade do código é garantida por testes automatizados. Para executá-los:
+
+```bash
+cd backend
+npm test
+
+```
+
+---
+
+## 📄 Licença
+
+Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](https://www.google.com/search?q=LICENSE) para detalhes.
+
+---
