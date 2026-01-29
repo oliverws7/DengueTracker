@@ -53,35 +53,28 @@ O projeto é dividido em duas frentes principais:
 ### Instalação e Configuração
 
 1. **Clonagem do Repositório:**
-```bash
-git clone https://github.com/oliverws7/DengueTracker.git
-cd DengueTracker
-
-```
-
+   ```bash
+   git clone https://github.com/oliverws7/DengueTracker.git
+   cd DengueTracker
+   ```
 
 2. **Configuração do Backend:**
-```bash
-cd backend
-npm install
-cp .env.example .env
+   ```bash
+   cd backend
+   npm install
+   cp .env.example .env
+   ```
+   *Edite o arquivo `.env` com suas credenciais do MongoDB e porta desejada.*
 
-```
-
-
-*Edite o arquivo `.env` com suas credenciais do MongoDB e porta desejada.*
 3. **Migrações do Banco:**
-```bash
-npm run migrate  # Se configurado via migrate-mongo
-
-```
-
+   ```bash
+   npm run migrate  # Se configurado via migrate-mongo
+   ```
 
 4. **Execução:**
-```bash
-npm run dev
-
-```
+   ```bash
+   npm run dev
+   ```
 
 
 
@@ -107,7 +100,6 @@ A qualidade do código é garantida por testes automatizados. Para executá-los:
 ```bash
 cd backend
 npm test
-
 ```
 
 ---
