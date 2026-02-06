@@ -1,60 +1,31 @@
-// src/App.jsx
-import { Routes, Route, BrowserRouter } from "react-router-dom";
-import Login from "./pages/Login";
-import Register from "./pages/Register";
-import Dashboard from "./pages/Dashboard";
-import NewReport from "./pages/NewReport";
-import ErrorBoundary from "./components/ErrorBoundary";
-import { PrivateRoute } from "./routes/PrivateRoute";
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './contexts/AuthContext';
+import Dashboard from './pages/dashboard/Dashboard';
+import Login from './pages/login/Login';
+import PrivateRoute from './components/PrivateRoute';
+import './App.css';
 
-export default function App() {
+function App() {
   return (
-    <ErrorBoundary>
-      <BrowserRouter>
-        <Routes>
-          {/* Rota raiz e Login */}
-          <Route path="/" element={<Login />} />
-          <Route path="/login" element={<Login />} />
-
-          {/* Rota pública para Cadastro */}
-          <Route path="/register" element={<Register />} />
-
-          {/* Rotas Protegidas */}
-          <Route
-            path="/dashboard"
-            element={
-              <PrivateRoute>
-                <Dashboard />
-              </PrivateRoute>
-            }
-          />
-
-          <Route
-            path="/novo-relatorio"
-            element={
-              <PrivateRoute>
-                <NewReport />
-              </PrivateRoute>
-            }
-          />
-
-          {/* 404 - Página não encontrada */}
-          <Route
-            path="*"
-            element={
-              <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
-                <div className="text-center">
-                  <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">404</h1>
-                  <p className="text-gray-600 dark:text-gray-400 mb-6">Página não encontrada</p>
-                  <a href="/dashboard" className="text-blue-600 hover:text-blue-700">
-                    Voltar para o Dashboard
-                  </a>
-                </div>
-              </div>
-            }
-          />
-        </Routes>
-      </BrowserRouter>
-    </ErrorBoundary>
+    <Router>
+      <AuthProvider>
+        <div className="App">
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route
+              path="/dashboard/*"
+              element={
+                <PrivateRoute>
+                  <Dashboard />
+                </PrivateRoute>
+              }
+            />
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
+        </div>
+      </AuthProvider>
+    </Router>
   );
 }
+
+export default App;
