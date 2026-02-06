@@ -1,134 +1,151 @@
-# 🦟 DengueTracker Ecosystem
 
-O **DengueTracker** é uma plataforma full-stack de monitoramento e combate à dengue. O projeto utiliza mecanismos de **gamificação** para incentivar a população a reportar focos do mosquito *Aedes aegypti*, integrando dados em tempo real para ações de saúde pública.
+---
+
+# 🦟 DengueTracker
+
+> **Sistema Inteligente de Monitoramento e Combate à Dengue**
+
+O **DengueTracker** é uma plataforma full-stack de monitoramento inteligente que utiliza **gamificação** e **dados em tempo real** para engajar a população e otimizar ações de saúde pública. O sistema integra geolocalização, análise preditiva e relatórios automáticos para uma gestão eficiente de focos do *Aedes aegypti*.
 
 ---
 
 ## 🏗️ Arquitetura do Sistema
 
-O projeto é dividido em duas frentes principais:
+O projeto segue uma estrutura modular para facilitar a escalabilidade e manutenção:
 
-* **Backend:** API REST robusta construída em Node.js, utilizando MongoDB para persistência de dados georreferenciados e autenticação JWT.
-* **Frontend:** Interface reativa para visualização de estatísticas e gestão de reportes (localizada no diretório `/frontend`).
-
-### Estrutura de Pastas
-
-```text
-.
-├── backend/
-│   ├── src/              # Core da aplicação (Controllers, Models, Routes)
-│   ├── migrations/       # Gestão de versionamento do banco de dados (MongoDB)
-│   ├── tests/            # Testes automatizados (Unitários e Integração)
-│   └── .env.example      # Template de variáveis de ambiente
-├── frontend/             # Código fonte da interface do usuário
-└── README.md
+```bash
+DENGUE-TRACKER/
+├── 🌐 backend/          # API REST (Node.js + Express + MongoDB)
+│   ├── src/             # Core da aplicação
+│   ├── migrations/      # Versionamento de dados
+│   └── tests/           # Testes automatizados (Jest)
+├── 💻 frontend/         # Interface SPA (React 19 + Vite)
+│   ├── src/             # Componentes, Contextos e Hooks
+│   └── public/          # Assets estáticos
+└── 📄 README.md         # Documentação central
 
 ```
 
 ---
 
-## 🛠️ Tecnologias Utilizadas
+## 🚀 Funcionalidades Principais
 
-### **Backend**
+### 📊 Dashboard Inteligente
 
-* **Runtime:** Node.js
-* **Banco de Dados:** MongoDB (com `migrate-mongo` para controle de schema)
-* **Segurança:** JWT (JSON Web Tokens) e Criptografia de senhas
-* **Documentação:** Swagger (disponível em `/api/docs`)
+* **Estatísticas em Tempo Real**: Monitoramento de casos confirmados e suspeitos.
+* **Mapas Interativos**: Visualização georreferenciada com *heatmaps* via Leaflet.
+* **Gráficos Dinâmicos**: Evolução temporal e distribuição regional com Recharts.
 
-### **Frontend**
+### 🎮 Gamificação (Engajamento)
 
-* **Em desenvolvimento**
+* **Rewards**: Ganho de pontos e badges ao reportar focos verificados.
+* **Social**: Rankings comunitários e missões diárias de prevenção.
+
+### 🔔 Comunicação em Tempo Real
+
+* **WebSockets**: Atualizações instantâneas de surtos locais via Socket.io.
+* **Alertas Push**: Notificações críticas diretamente no navegador.
+
+---
+
+## 🛠️ Stack Tecnológica
+
+| Camada | Tecnologias |
+| --- | --- |
+| **Frontend** | React 19, Vite, React Router 7, Recharts, Leaflet, CSS Modules |
+| **Backend** | Node.js, Express, Mongoose, Socket.io, JWT |
+| **Banco de Dados** | MongoDB (NoSQL) |
+| **DevOps/Testes** | Docker, Jest, Supertest, Vite |
 
 ---
 
 ## 🚦 Começando
 
-### Pré-requisitos
+### **Pré-requisitos**
 
-* Node.js (v16 ou superior)
-* MongoDB rodando localmente ou via Docker
-* Gerenciador de pacotes (NPM ou Yarn)
+* Node.js 18+ / MongoDB 6.0+ / NPM ou Yarn
 
-### Instalação e Configuração
+### **Instalação Rápida**
 
-1. **Clonagem do Repositório:**
-   ```bash
-   git clone https://github.com/oliverws7/DengueTracker.git
-   cd DengueTracker
-   ```
+1. **Clone o projeto:**
+```bash
+git clone https://github.com/oliverws7/DengueTracker.git
+cd DengueTracker
+
+```
+
 
 2. **Configuração do Backend:**
-   ```bash
-   cd backend
-   npm install
-   cp .env.example .env
-   ```
-   *Edite o arquivo `.env` com suas credenciais do MongoDB e porta desejada.*
-
-3. **Migrações do Banco:**
-   ```bash
-   npm run migrate  # Se configurado via migrate-mongo
-   ```
-
-4. **Execução:**
-   ```bash
-   npm run dev
-   ```
-
----
-
-## 🚀 Atualizações Recentes
-
-### **Frontend**
-* **Tecnologias:** O frontend agora utiliza React com Vite para uma melhor experiência de desenvolvimento e desempenho.
-* **Funcionalidades:** Adicionadas novas páginas para visualização de relatórios e gestão de usuários.
-
-### **Backend**
-* **Segurança:** Implementação de novas rotas de autenticação e autorização.
-* **Banco de Dados:** Atualizações nas migrações para suportar novos campos e funcionalidades.
-
----
-
-## 📦 Instalação e Configuração
-
-### **Frontend**
-
-1. **Configuração do Frontend:**
-   ```bash
-   cd frontend
-   npm install
-   ```
-   *Edite o arquivo `vite.config.js` conforme necessário para suas configurações.*
-
----
-
-## 🔌 API Reference (v2.1)
-
-Principais endpoints disponíveis:
-
-| Método | Endpoint | Descrição | Autenticação |
-| --- | --- | --- | --- |
-| `POST` | `/api/auth/login` | Autentica usuário e retorna token | Não |
-| `POST` | `/api/reports` | Cria um novo reporte de foco | Sim (Bearer) |
-| `GET` | `/api/gamification` | Retorna ranking e pontuação | Sim (Bearer) |
-| `GET` | `/api/public/stats` | Estatísticas públicas para o dashboard | Não |
-
----
-
-## 🧪 Testes
-
-A qualidade do código é garantida por testes automatizados. Para executá-los:
-
 ```bash
 cd backend
-npm test
+npm install
+cp .env.example .env  # Configure suas chaves
+npm run dev
+
 ```
+
+
+3. **Configuração do Frontend:**
+```bash
+cd ../frontend
+npm install
+npm run dev
+
+```
+
+
+
+---
+
+## 📡 API Reference (v3.0)
+
+### Endpoints Principais
+
+* `POST /api/auth/login` - Autenticação de usuários.
+* `GET /api/cases/stats` - Retorna dados consolidados para o dashboard.
+* `POST /api/cases/report` - Registra um novo foco de dengue.
+* `GET /api/gamification/leaderboard` - Ranking de usuários.
+
+> [!TIP]
+> A documentação completa da API está disponível via **Swagger** em `http://localhost:5000/api-docs` quando o servidor está rodando.
+
+---
+
+## 🎨 Sistema de Temas
+
+O sistema conta com suporte nativo a **Light e Dark Mode** através da Context API, respeitando a preferência do sistema do usuário ou seleção manual.
+
+---
+
+## 📈 Roadmap de Evolução
+
+* [x] Dashboard básico e Mapas.
+* [x] Sistema de autenticação e permissões.
+* [ ] **v2.0**: Aplicativo Mobile com React Native.
+* [ ] **v2.1**: Machine Learning para predição de surtos.
+* [ ] **v3.0**: Integração com dispositivos IoT para armadilhas inteligentes.
+
+---
+
+## 🤝 Contribuição
+
+Contribuições são o que fazem a comunidade open source um lugar incrível para aprender e criar!
+
+1. Faça um **Fork** do projeto.
+2. Crie uma **Branch** para sua feature (`git checkout -b feature/IncrivelFeature`).
+3. Faça o **Commit** de suas alterações (`git commit -m 'Add: Minha nova feature'`).
+4. Execute o **Push** para a Branch (`git push origin feature/IncrivelFeature`).
+5. Abra um **Pull Request**.
 
 ---
 
 ## 📄 Licença
 
-Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](https://www.google.com/search?q=LICENSE) para detalhes.
+Distribuído sob a licença **MIT**. Veja `LICENSE` para mais informações.
 
 ---
+
+**Desenvolvido por [Mateus Nunes **](https://github.com/oliverws7/DengueTracker) 🚀
+
+---
+
